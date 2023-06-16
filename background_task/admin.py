@@ -52,6 +52,7 @@ class TaskAdmin(admin.ModelAdmin):
     list_filter = [
         "task_name",
         # ("run_at", DateTimeRangeFilter),
+        "locked_by",
     ]
     list_display = [
         "task_name",
