@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import datetime
+
 from django.contrib import admin
 from background_task.models import Task
 from background_task.models import CompletedTask
@@ -61,7 +63,7 @@ class TaskAdmin(admin.ModelAdmin):
         "locked_by",
         "locked_by_pid_running",
     ]
-    actions = [inc_priority, dec_priority, "unlock_task"]
+    actions = [inc_priority, dec_priority, "unlock_task", "run_now"]
 
     def unlock_task(self, request, queryset):
         if request.user.is_superuser:
@@ -71,6 +73,14 @@ class TaskAdmin(admin.ModelAdmin):
                 task.save()
 
     unlock_task.short_description = "Unlock Selected Tasks"
+
+    def run_now(self, request, queryset):
+        if request.user.is_superuser:
+            for task in queryset:
+                task.run_at = datetime.datetime.now()
+                task.save()
+
+    run_now.short_description = "Run Selected Tasks Now"
 
 
 class CompletedTaskAdmin(admin.ModelAdmin):
