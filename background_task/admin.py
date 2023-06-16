@@ -61,7 +61,16 @@ class TaskAdmin(admin.ModelAdmin):
         "locked_by",
         "locked_by_pid_running",
     ]
-    actions = [inc_priority, dec_priority]
+    actions = [inc_priority, dec_priority, "unlock_task"]
+
+    def unlock_task(self, request, queryset):
+        if request.user.is_superuser:
+            for task in queryset:
+                task.locked_by = None
+                task.locked_at = None
+                task.save()
+
+    unlock_task.short_description = "Unlock Selected Tasks"
 
 
 class CompletedTaskAdmin(admin.ModelAdmin):
