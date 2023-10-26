@@ -76,7 +76,9 @@ class TaskManager(models.Manager):
         max_run_time = app_settings.BACKGROUND_TASK_MAX_RUN_TIME
         qs = self.get_queryset()
         expires_at = now - timedelta(seconds=max_run_time)
-        locked = Q(locked_by__isnull=False) | Q(locked_at__gt=expires_at)
+        locked = (
+            Q(locked_by__isnull=False) | Q(locked_at__gt=expires_at)
+        ) & Q(locked_by=str(os.getpid()))
         return qs.filter(locked)
 
     def failed(self):
@@ -85,7 +87,7 @@ class TaskManager(models.Manager):
         tasks marked as failed are also in processing by the running PID.
         """
         qs = self.get_queryset()
-        return qs.filter(failed_at__isnull=False)
+        return qs.filter(failed_at__isnull=False, locked_by=str(os.getpid()))
 
     def new_task(
         self,
