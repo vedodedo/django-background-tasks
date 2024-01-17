@@ -56,6 +56,7 @@ class TaskAdmin(admin.ModelAdmin):
     ]
     list_display = [
         "task_name",
+        "queue",
         "task_params",
         "run_at",
         "priority",
