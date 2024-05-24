@@ -207,6 +207,10 @@ class Task(models.Model):
     creator_object_id = models.PositiveIntegerField(null=True, blank=True)
     creator = GenericForeignKey("creator_content_type", "creator_object_id")
 
+    worker = models.CharField(
+        max_length=128, db_index=True, null=True, blank=True
+    )
+
     objects = TaskManager()
 
     def locked_by_pid_running(self):
@@ -242,7 +246,11 @@ class Task(models.Model):
     def lock(self, locked_by):
         now = timezone.now()
         unlocked = Task.objects.unlocked(now).filter(pk=self.pk)
-        updated = unlocked.update(locked_by=locked_by, locked_at=now)
+        updated = unlocked.update(
+            locked_by=locked_by,
+            locked_at=now,
+            worker=app_settings.BACKGROUND_TASK_WORKER_UUID,
+        )
         if updated:
             return Task.objects.get(pk=self.pk)
         return None
@@ -316,6 +324,7 @@ class Task(models.Model):
             creator=self.creator,
             repeat=self.repeat,
             repeat_until=self.repeat_until,
+            worker=self.worker,
         )
         completed_task.save()
         return completed_task
@@ -450,6 +459,9 @@ class CompletedTask(models.Model):
     )
     creator_object_id = models.PositiveIntegerField(null=True, blank=True)
     creator = GenericForeignKey("creator_content_type", "creator_object_id")
+    worker = models.CharField(
+        max_length=128, db_index=True, null=True, blank=True
+    )
 
     objects = CompletedTaskQuerySet.as_manager()
 

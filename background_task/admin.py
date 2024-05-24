@@ -53,6 +53,7 @@ class TaskAdmin(admin.ModelAdmin):
         "task_name",
         # ("run_at", DateTimeRangeFilter),
         "locked_by",
+        "worker",
     ]
     list_display = [
         "task_name",
@@ -64,6 +65,7 @@ class TaskAdmin(admin.ModelAdmin):
         "has_error",
         "locked_by",
         "locked_by_pid_running",
+        "worker",
     ]
     actions = [inc_priority, dec_priority, "unlock_task", "run_now"]
 
@@ -97,11 +99,13 @@ class CompletedTaskAdmin(admin.ModelAdmin):
         "has_error",
         "locked_by",
         "locked_by_pid_running",
+        "worker",
     ]
     list_filter = [
         "task_name",
         ScrapeStatusFilter,
         # ("run_at", DateTimeRangeFilter),
+        "worker",
     ]
 
 
