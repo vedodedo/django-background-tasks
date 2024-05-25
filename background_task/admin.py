@@ -74,6 +74,7 @@ class TaskAdmin(admin.ModelAdmin):
             for task in queryset:
                 task.locked_by = None
                 task.locked_at = None
+                task.worker = None
                 task.save()
 
     unlock_task.short_description = "Unlock Selected Tasks"
