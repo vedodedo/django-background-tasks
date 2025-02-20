@@ -249,7 +249,9 @@ class Task(models.Model):
 
     def lock(self, locked_by):
         now = timezone.now()
-        unlocked = Task.objects.unlocked(now).filter(pk=self.pk)
+        unlocked = Task.objects.unlocked(now).filter(pk=self.pk).exclude(
+            task_name__in=app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
+        )
         updated = unlocked.update(
             locked_by=locked_by,
             locked_at=now,

@@ -63,5 +63,10 @@ class AppSettings(object):
         """THE WORKER UUID."""
         return getattr(settings, "BACKGROUND_TASK_WORKER_UUID", "worker")
 
+    @property
+    def BACKGROUND_TASK_EXCLUDED_TASKS(self):
+        """THE WORKER UUID."""
+        return getattr(settings, "BACKGROUND_TASK_EXCLUDED_TASKS", [])
+
 
 app_settings = AppSettings()
