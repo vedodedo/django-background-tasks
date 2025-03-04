@@ -54,10 +54,16 @@ class TaskManager(models.Manager):
         ready = ready.order_by(_priority_ordering, "run_at")
 
         if app_settings.BACKGROUND_TASK_RUN_ASYNC:
-            currently_failed = self.failed().count()
-            currently_locked = self.locked(now).count()
+            currently_failed_count = self.failed().count()
+            currently_locked = self.locked(now)
+            currently_locked_count = currently_locked.count()
+
+            for task_name in app_settings.BACKGROUND_TASK_SYNCHRONOUS_PER_WORKER_TASKS:
+                if currently_locked.filter(task_name=task_name).exists():
+                    ready = ready.filter(~Q(task_name=task_name))
+
             count = app_settings.BACKGROUND_TASK_ASYNC_THREADS - (
-                currently_locked - currently_failed
+                currently_locked_count - currently_failed_count
             )
             if count > 0:
                 ready = ready[:count]
