@@ -69,23 +69,33 @@ class TaskManager(models.Manager):
                 ready = ready[:count]
             else:
                 ready = self.none()
+
         return ready
 
     def unlocked(self, now):
         max_run_time = app_settings.BACKGROUND_TASK_MAX_RUN_TIME
+        worker_specifics = app_settings.BACKGROUND_TASK_WORKER_SPECIFIC_TASKS
+        worker_excluded = app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
         qs = self.get_queryset()
         expires_at = now - timedelta(seconds=max_run_time)
-        unlocked = Q(locked_by=None) | Q(locked_at__lt=expires_at)
-        return qs.filter(unlocked)
+        unlocked = (Q(locked_by=None) | Q(locked_at__lt=expires_at)) & Q(
+            task_name__in=worker_specifics
+        )
+        return qs.filter(unlocked).exclude(task_name__in=worker_excluded)
 
     def locked(self, now):
         max_run_time = app_settings.BACKGROUND_TASK_MAX_RUN_TIME
+        worker_specifics = app_settings.BACKGROUND_TASK_WORKER_SPECIFIC_TASKS
+        worker_excluded = app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
         qs = self.get_queryset()
         expires_at = now - timedelta(seconds=max_run_time)
-        locked = ((
-            Q(locked_by__isnull=False) | Q(locked_at__gt=expires_at)
-        ) & Q(locked_by=str(os.getpid())) & Q(worker=app_settings.BACKGROUND_TASK_WORKER_UUID))
-        return qs.filter(locked)
+        locked = (
+            (Q(locked_by__isnull=False) | Q(locked_at__gt=expires_at))
+            & Q(locked_by=str(os.getpid()))
+            & Q(worker=app_settings.BACKGROUND_TASK_WORKER_UUID)
+            & Q(task_name__in=worker_specifics)
+        )
+        return qs.filter(locked).exclude(task_name__in=worker_excluded)
 
     def failed(self):
         """
@@ -96,8 +106,9 @@ class TaskManager(models.Manager):
         return qs.filter(
             failed_at__isnull=False,
             locked_by=str(os.getpid()),
-            worker=app_settings.BACKGROUND_TASK_WORKER_UUID
-        )
+            worker=app_settings.BACKGROUND_TASK_WORKER_UUID,
+            task_name__in=app_settings.BACKGROUND_TASK_WORKER_SPECIFIC_TASKS,
+        ).exclude(task_name__in=worker_excluded)
 
     def new_task(
         self,
@@ -125,9 +136,7 @@ class TaskManager(models.Manager):
         s = "%s%s" % (task_name, task_params)
         task_hash = sha1(s.encode("utf-8")).hexdigest()
         if remove_existing_tasks:
-            Task.objects.filter(
-                task_hash=task_hash, locked_at__isnull=True
-            ).delete()
+            Task.objects.filter(task_hash=task_hash, locked_at__isnull=True).delete()
         return Task(
             task_name=task_name,
             task_params=task_params,
@@ -142,12 +151,19 @@ class TaskManager(models.Manager):
         )
 
     def get_task(self, task_name, args=None, kwargs=None):
+        worker_specifics = app_settings.BACKGROUND_TASK_WORKER_SPECIFIC_TASKS
+        worker_excluded = app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
+
         args = args or ()
         kwargs = kwargs or {}
         task_params = json.dumps((args, kwargs), sort_keys=True)
         s = "%s%s" % (task_name, task_params)
         task_hash = sha1(s.encode("utf-8")).hexdigest()
-        qs = self.get_queryset()
+        qs = (
+            self.get_queryset()
+            .filter(task_name__in=worker_specifics)
+            .exclude(task_name__in=worker_excluded)
+        )
         return qs.filter(task_hash=task_hash)
 
     def drop_task(self, task_name, args=None, kwargs=None):
@@ -190,9 +206,7 @@ class Task(models.Model):
     repeat_until = models.DateTimeField(null=True, blank=True)
 
     # the "name" of the queue this is to be run on
-    queue = models.CharField(
-        max_length=190, db_index=True, null=True, blank=True
-    )
+    queue = models.CharField(max_length=190, db_index=True, null=True, blank=True)
 
     # how many times the task has been tried
     attempts = models.IntegerField(default=0, db_index=True)
@@ -202,9 +216,7 @@ class Task(models.Model):
     last_error = models.TextField(blank=True)
 
     # details of who's trying to run the task at the moment
-    locked_by = models.CharField(
-        max_length=64, db_index=True, null=True, blank=True
-    )
+    locked_by = models.CharField(max_length=64, db_index=True, null=True, blank=True)
     locked_at = models.DateTimeField(db_index=True, null=True, blank=True)
 
     creator_content_type = models.ForeignKey(
@@ -217,9 +229,7 @@ class Task(models.Model):
     creator_object_id = models.PositiveIntegerField(null=True, blank=True)
     creator = GenericForeignKey("creator_content_type", "creator_object_id")
 
-    worker = models.CharField(
-        max_length=128, db_index=True, null=True, blank=True
-    )
+    worker = models.CharField(max_length=128, db_index=True, null=True, blank=True)
 
     objects = TaskManager()
 
@@ -255,9 +265,7 @@ class Task(models.Model):
 
     def lock(self, locked_by):
         now = timezone.now()
-        unlocked = Task.objects.unlocked(now).filter(pk=self.pk).exclude(
-            task_name__in=app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
-        )
+        unlocked = Task.objects.unlocked(now).filter(pk=self.pk)
         updated = unlocked.update(
             locked_by=locked_by,
             locked_at=now,
@@ -290,9 +298,7 @@ class Task(models.Model):
         """
         self.last_error = self._extract_error(type, err, traceback)
         self.increment_attempts()
-        if self.has_reached_max_attempts() or isinstance(
-            err, InvalidTaskError
-        ):
+        if self.has_reached_max_attempts() or isinstance(err, InvalidTaskError):
             self.failed_at = timezone.now()
             logger.warning("Marking task %s as failed", self)
             completed = self.create_completed_task()
@@ -314,6 +320,7 @@ class Task(models.Model):
             task_rescheduled.send(sender=self.__class__, task=self)
             self.locked_by = None
             self.locked_at = None
+            self.worker = None
             self.save()
 
     def create_completed_task(self):
@@ -439,15 +446,11 @@ class CompletedTask(models.Model):
     # when the task should be run
     run_at = models.DateTimeField(db_index=True)
 
-    repeat = models.BigIntegerField(
-        choices=Task.REPEAT_CHOICES, default=Task.NEVER
-    )
+    repeat = models.BigIntegerField(choices=Task.REPEAT_CHOICES, default=Task.NEVER)
     repeat_until = models.DateTimeField(null=True, blank=True)
 
     # the "name" of the queue this is to be run on
-    queue = models.CharField(
-        max_length=190, db_index=True, null=True, blank=True
-    )
+    queue = models.CharField(max_length=190, db_index=True, null=True, blank=True)
 
     # how many times the task has been tried
     attempts = models.IntegerField(default=0, db_index=True)
@@ -457,9 +460,7 @@ class CompletedTask(models.Model):
     last_error = models.TextField(blank=True)
 
     # details of who's trying to run the task at the moment
-    locked_by = models.CharField(
-        max_length=64, db_index=True, null=True, blank=True
-    )
+    locked_by = models.CharField(max_length=64, db_index=True, null=True, blank=True)
     locked_at = models.DateTimeField(db_index=True, null=True, blank=True)
 
     creator_content_type = models.ForeignKey(
@@ -471,9 +472,7 @@ class CompletedTask(models.Model):
     )
     creator_object_id = models.PositiveIntegerField(null=True, blank=True)
     creator = GenericForeignKey("creator_content_type", "creator_object_id")
-    worker = models.CharField(
-        max_length=128, db_index=True, null=True, blank=True
-    )
+    worker = models.CharField(max_length=128, db_index=True, null=True, blank=True)
 
     objects = CompletedTaskQuerySet.as_manager()
 

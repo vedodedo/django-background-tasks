@@ -69,6 +69,11 @@ class AppSettings(object):
         return getattr(settings, "BACKGROUND_TASK_EXCLUDED_TASKS", [])
 
     @property
+    def BACKGROUND_TASK_WORKER_SPECIFIC_TASKS(self):
+        """THE WORKER UUID."""
+        return getattr(settings, "BACKGROUND_TASK_WORKER_SPECIFIC_TASKS", [])
+
+    @property
     def BACKGROUND_TASK_SYNCHRONOUS_PER_WORKER_TASKS(self):
         """THE WORKER UUID."""
         return getattr(settings, "BACKGROUND_TASK_SYNCHRONOUS_PER_WORKER_TASKS", [])
