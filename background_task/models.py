@@ -78,10 +78,15 @@ class TaskManager(models.Manager):
         worker_excluded = app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
         qs = self.get_queryset()
         expires_at = now - timedelta(seconds=max_run_time)
-        unlocked = (Q(locked_by=None) | Q(locked_at__lt=expires_at)) & Q(
-            task_name__in=worker_specifics
-        )
-        return qs.filter(unlocked).exclude(task_name__in=worker_excluded)
+        unlocked = Q(locked_by=None) | Q(locked_at__lt=expires_at)
+        # Apply only if there are specific tasks listed
+        if worker_specifics:  # non-empty list/tuple
+            unlocked &= Q(task_name__in=worker_specifics)
+        # (Optional) honor exclusions if provided
+        if worker_excluded:
+            unlocked &= ~Q(task_name__in=worker_excluded)
+
+        return qs.filter(unlocked)
 
     def locked(self, now):
         max_run_time = app_settings.BACKGROUND_TASK_MAX_RUN_TIME
@@ -93,22 +98,37 @@ class TaskManager(models.Manager):
             (Q(locked_by__isnull=False) | Q(locked_at__gt=expires_at))
             & Q(locked_by=str(os.getpid()))
             & Q(worker=app_settings.BACKGROUND_TASK_WORKER_UUID)
-            & Q(task_name__in=worker_specifics)
         )
-        return qs.filter(locked).exclude(task_name__in=worker_excluded)
+        # Only apply specific-task filter if non-empty
+        if worker_specifics:
+            locked &= Q(task_name__in=worker_specifics)
+        qs = qs.filter(locked)
+        # Only exclude if exclusions are provided
+        if worker_excluded:
+            qs = qs.exclude(task_name__in=worker_excluded)
+
+        return qs
 
     def failed(self):
         """
-        `currently_locked - currently_failed` in `find_available` assues that
+        `currently_locked - currently_failed` in `find_available` assumes that
         tasks marked as failed are also in processing by the running PID.
         """
-        qs = self.get_queryset()
-        return qs.filter(
+        worker_specifics = app_settings.BACKGROUND_TASK_WORKER_SPECIFIC_TASKS
+        worker_excluded = app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
+        qs = self.get_queryset().filter(
             failed_at__isnull=False,
             locked_by=str(os.getpid()),
             worker=app_settings.BACKGROUND_TASK_WORKER_UUID,
-            task_name__in=app_settings.BACKGROUND_TASK_WORKER_SPECIFIC_TASKS,
-        ).exclude(task_name__in=worker_excluded)
+        )
+        # Only constrain to specific task names if provided (non-empty)
+        if worker_specifics:
+            qs = qs.filter(task_name__in=worker_specifics)
+        # Only exclude if exclusions are provided
+        if worker_excluded:
+            qs = qs.exclude(task_name__in=worker_excluded)
+
+        return qs
 
     def new_task(
         self,
@@ -157,13 +177,18 @@ class TaskManager(models.Manager):
         args = args or ()
         kwargs = kwargs or {}
         task_params = json.dumps((args, kwargs), sort_keys=True)
-        s = "%s%s" % (task_name, task_params)
-        task_hash = sha1(s.encode("utf-8")).hexdigest()
-        qs = (
-            self.get_queryset()
-            .filter(task_name__in=worker_specifics)
-            .exclude(task_name__in=worker_excluded)
-        )
+        task_hash = sha1(f"{task_name}{task_params}".encode("utf-8")).hexdigest()
+
+        qs = self.get_queryset()
+
+        # Only constrain to specific tasks if provided (non-empty)
+        if worker_specifics:
+            qs = qs.filter(task_name__in=worker_specifics)
+
+        # Only exclude if exclusions are provided
+        if worker_excluded:
+            qs = qs.exclude(task_name__in=worker_excluded)
+
         return qs.filter(task_hash=task_hash)
 
     def drop_task(self, task_name, args=None, kwargs=None):
