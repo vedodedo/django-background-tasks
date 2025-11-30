@@ -143,6 +143,7 @@ class TaskManager(models.Manager):
         repeat=None,
         repeat_until=None,
         remove_existing_tasks=False,
+        worker=None,
     ):
         """
         If `remove_existing_tasks` is True, all unlocked tasks with the identical task hash will be removed.
@@ -168,6 +169,7 @@ class TaskManager(models.Manager):
             creator=creator,
             repeat=repeat or Task.NEVER,
             repeat_until=repeat_until,
+            worker=worker,
         )
 
     def get_task(self, task_name, args=None, kwargs=None):
