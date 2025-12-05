@@ -113,13 +113,13 @@ class TaskAdmin(admin.ModelAdmin):
         "queue",
         "task_params",
         "run_at",
+        "locked_at",
         "priority",
         # "attempts",
         "worker",
         "locked_by",
-        "locked_by_pid_running",
-        "has_error",
-
+        # "locked_by_pid_running",
+        # "has_error",
     ]
     actions = [inc_priority, dec_priority, "unlock_task", "run_now"]
 
