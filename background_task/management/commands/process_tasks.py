@@ -8,6 +8,7 @@ from django import VERSION
 from django.core.management.base import BaseCommand
 from django.utils import autoreload
 
+from background_task.settings import app_settings
 from background_task.tasks import tasks, autodiscover
 from background_task.utils import SignalManager
 from compat import close_connection
@@ -104,6 +105,7 @@ class Command(BaseCommand):
         log_std = options.get("log_std", False)
         is_dev = options.get("dev", False)
         sig_manager = self.sig_manager
+        idle_between_tasks = app_settings.BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS
 
         if is_dev:
             # raise last Exception is exist
@@ -134,6 +136,9 @@ class Command(BaseCommand):
                         sig_manager.time_to_wait[1],
                     )
                 )
+
+            if idle_between_tasks:
+                time.sleep(idle_between_tasks)
 
     def handle(self, *args, **options):
         is_dev = options.get("dev", False)

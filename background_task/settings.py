@@ -78,5 +78,10 @@ class AppSettings(object):
         """THE WORKER UUID."""
         return getattr(settings, "BACKGROUND_TASK_SYNCHRONOUS_PER_WORKER_TASKS", [])
 
+    @property
+    def BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS(self):
+        """THE WORKER UUID."""
+        return getattr(settings, "BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS", 0)
+
 
 app_settings = AppSettings()
