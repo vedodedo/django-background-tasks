@@ -76,6 +76,7 @@ class TaskManager(models.Manager):
         max_run_time = app_settings.BACKGROUND_TASK_MAX_RUN_TIME
         worker_specifics = app_settings.BACKGROUND_TASK_WORKER_SPECIFIC_TASKS
         worker_excluded = app_settings.BACKGROUND_TASK_EXCLUDED_TASKS
+        worker_uuid = app_settings.BACKGROUND_TASK_WORKER_UUID
         qs = self.get_queryset()
         expires_at = now - timedelta(seconds=max_run_time)
         unlocked = Q(locked_by=None) | Q(locked_at__lt=expires_at)
@@ -85,6 +86,9 @@ class TaskManager(models.Manager):
         # (Optional) honor exclusions if provided
         if worker_excluded:
             unlocked &= ~Q(task_name__in=worker_excluded)
+        # Only pick up tasks assigned to this worker or tasks with no worker assignment
+        worker_filter = Q(worker=worker_uuid) | Q(worker__isnull=True) | Q(worker='')
+        unlocked &= worker_filter
 
         return qs.filter(unlocked)
 
@@ -293,10 +297,12 @@ class Task(models.Model):
     def lock(self, locked_by):
         now = timezone.now()
         unlocked = Task.objects.unlocked(now).filter(pk=self.pk)
+        # Only set worker if not already assigned
+        worker_uuid = self.worker if self.worker else app_settings.BACKGROUND_TASK_WORKER_UUID
         updated = unlocked.update(
             locked_by=locked_by,
             locked_at=now,
-            worker=app_settings.BACKGROUND_TASK_WORKER_UUID,
+            worker=worker_uuid,
         )
         if updated:
             return Task.objects.get(pk=self.pk)
@@ -402,6 +408,7 @@ class Task(models.Model):
             creator=self.creator,
             repeat=self.repeat,
             repeat_until=self.repeat_until,
+            worker=self.worker,
         )
         new_task.save()
         return new_task
