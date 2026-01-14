@@ -105,7 +105,6 @@ class Command(BaseCommand):
         log_std = options.get("log_std", False)
         is_dev = options.get("dev", False)
         sig_manager = self.sig_manager
-        idle_between_tasks = app_settings.BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS
 
         if is_dev:
             # raise last Exception is exist
@@ -123,7 +122,8 @@ class Command(BaseCommand):
                 # shutting down gracefully
                 break
 
-            if not self._tasks.run_next_task(queue):
+            task_name = self._tasks.run_next_task(queue)
+            if not task_name:
                 # there were no tasks in the queue, let's recover.
                 close_connection()
                 logger.debug("waiting for tasks")
@@ -137,8 +137,11 @@ class Command(BaseCommand):
                     )
                 )
 
-            if idle_between_tasks:
-                time.sleep(idle_between_tasks)
+                # Apply per-task or global post-completion delay
+                post_completion_delay = app_settings.get_post_completion_delay(task_name)
+                if post_completion_delay:
+                    logger.debug("sleeping for %s seconds after task %s", post_completion_delay, task_name)
+                    time.sleep(post_completion_delay)
 
     def handle(self, *args, **options):
         is_dev = options.get("dev", False)

@@ -261,9 +261,9 @@ class DBTaskRunner(object):
         task = self.get_task_to_run(tasks, queue)
         if task:
             self.run_task(tasks, task)
-            return True
+            return task.task_name
         else:
-            return False
+            return None
 
 
 @python_2_unicode_compatible

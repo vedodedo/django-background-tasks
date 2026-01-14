@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import multiprocessing
+import random
 
 from django.conf import settings
 
@@ -82,6 +83,35 @@ class AppSettings(object):
     def BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS(self):
         """THE WORKER UUID."""
         return getattr(settings, "BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS", 0)
+
+    @property
+    def BACKGROUND_TASK_POST_COMPLETION_DELAYS(self):
+        """
+        Per-task delay configuration after task completion.
+        Dict mapping task_name to delay value.
+        Delay can be:
+          - int: fixed delay in seconds (e.g., 120)
+          - tuple/list: (min, max) for random delay in seconds (e.g., (60, 120))
+        """
+        return getattr(settings, "BACKGROUND_TASK_POST_COMPLETION_DELAYS", {})
+
+    def get_post_completion_delay(self, task_name):
+        """
+        Get the delay in seconds for a specific task after completion.
+        Returns the calculated delay based on task-specific config or falls back
+        to BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS.
+        """
+        delays = self.BACKGROUND_TASK_POST_COMPLETION_DELAYS
+
+        if task_name in delays:
+            delay_config = delays[task_name]
+            if isinstance(delay_config, (list, tuple)) and len(delay_config) == 2:
+                return random.uniform(delay_config[0], delay_config[1])
+            elif isinstance(delay_config, (int, float)):
+                return delay_config
+
+        # Fallback to global setting
+        return self.BACKGROUND_TASK_WORKER_IDLE_BETWEEN_TASKS
 
 
 app_settings = AppSettings()
