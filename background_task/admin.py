@@ -162,6 +162,44 @@ class CompletedTaskAdmin(admin.ModelAdmin):
         # ("run_at", DateTimeRangeFilter),
         "worker",
     ]
+    actions = ["recreate_task"]
+
+    def recreate_task(self, request, queryset):
+        """
+        Recreate selected completed tasks as new tasks in the Task table.
+        The new tasks will be scheduled to run immediately with attempts reset.
+        """
+        recreated_count = 0
+        for completed_task in queryset:
+            # Create a new Task with the same parameters
+            new_task = Task(
+                task_name=completed_task.task_name,
+                task_params=completed_task.task_params,
+                task_hash=completed_task.task_hash,
+                verbose_name=completed_task.verbose_name,
+                priority=completed_task.priority,
+                run_at=datetime.datetime.now(),  # Schedule to run immediately
+                queue=completed_task.queue,
+                repeat=completed_task.repeat,
+                repeat_until=completed_task.repeat_until,
+                creator=completed_task.creator,
+                worker=completed_task.worker,
+                # Reset attempt-related fields
+                attempts=0,
+                failed_at=None,
+                last_error="",
+                locked_by=None,
+                locked_at=None,
+            )
+            new_task.save()
+            recreated_count += 1
+
+        self.message_user(
+            request,
+            f"Successfully recreated {recreated_count} task(s)."
+        )
+
+    recreate_task.short_description = "Recreate selected tasks"
 
 
 admin.site.register(Task, TaskAdmin)
